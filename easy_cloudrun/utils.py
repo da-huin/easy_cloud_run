@@ -5,13 +5,14 @@ import subprocess
 import threading
 import time
 
-class Utils():    
+
+class Utils():
     def get_set_environ_command(self):
 
         if self.is_windows():
             set_environ_command = "SET"
         else:
-            set_environ_command = "export"        
+            set_environ_command = "export"
         return set_environ_command
 
     def get_os(self):
@@ -30,7 +31,8 @@ class Utils():
                 break
 
         if service_path == "":
-            raise ValueError(f"service Could be found in {service_base_path}/{service_name}")
+            raise ValueError(
+                f"service Could be found in {service_base_path}/{service_name}")
 
         result = service_path.replace("\\", "/")
         if len(result.split("/")) == 1:
@@ -83,8 +85,6 @@ class Utils():
 
             print(line, end="")
 
-
-
     def copy_directory(self, from_path, to_path):
         from_base_dir = os.path.abspath(from_path).replace("\\", "/")
         to_base_dir = os.path.abspath(to_path).replace("\\", "/")
@@ -111,7 +111,7 @@ class Utils():
                     else:
                         break
                 copyed_file_paths.append(to_file_path)
-        
+
         all_to_file_path = []
         for dirpath, _, filenames in os.walk(to_base_dir):
             for filename in filenames:
