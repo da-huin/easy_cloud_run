@@ -155,7 +155,7 @@ class EasyCloudRun():
                 result.extend([key, value])
             else:
                 value = commands[key]
-                result.extend([key, value]) if value else result.append(value)
+                result.extend([key, value]) if value else result.append(key)
 
         return result
 
