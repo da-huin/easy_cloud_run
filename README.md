@@ -6,7 +6,7 @@
  
 </p>
 
-<h3 align="center">Easy Lambda</h3>
+<h3 align="center">Easy CloudRun</h3>
 
 <div align="center">
 
@@ -19,7 +19,7 @@
 
 ---
 
-<p align="center"> AWS Lambda와 Lambda Layer를 쉽게 배포하고 테스트 할 수 있게 도와주는 패키지입니다.
+<p align="center"> GCP Cloud Run 을 사용 할 때 테스트, 빌드, 배포, GCP 이미지 삭제 등을 간단하게 해주는 패키지입니다.
     <br> 
 </p>
 
@@ -27,23 +27,26 @@
 
 - [About](#about)
 - [Getting Started](#getting_started)
+- [References](#references)
 - [Usage](#usage)
 - [Acknowledgments](#acknowledgement)
 
 ## 🧐 About <a name = "about"></a>
 
-Lambda 코드를 작성 할 때 Lambda Console 에서 작성하면 환경도 좋지 않고, 버전 관리가 되지 않는 등 여러가지 문제가 있습니다. 
+GCloud 로 배포하려면 GCR 에 배포 한 뒤 Cloud Run 에 배포해야하며, 배포 매개변수를 매번 설정해주어야 하는 문제가 있습니다.
 
-그래서 AWS SAM 을 사용하는데 이 툴은 template 과 package 를 만들어야 하는 등 여러가지 복잡한 것들이 많습니다.
-
-이 패키지는 AWS SAM 을 내부에 두고, Lambda 와 Lambda Layer 를 쉽게 배포하고 테스트 할 수 있게 도와줍니다.
+그 작업을 간단하게 하기 위하여 사용하기 쉽게 만들어진 패키지입니다.
 
 아래의 함수들을 사용 할 수 있습니다.
 
-* [create](#create)
-* [test](#test)
+* [run](#run)
+* [build](#build)
+* [build_push](#build_push)
+* [build_push_deploy](#build_push_deploy)
+* [push](#push)
 * [deploy](#deploy)
-* [deploy_layer](#deploy_layer)
+* [rmi](#rmi)
+* [run_cloud](#run_cloud)
 
 ## 🏁 Getting Started <a name = "getting_started"></a>
 
@@ -57,230 +60,353 @@ pip install easy_cloudrun
 
 ### Prerequisites 
 
-1. AWS CLI 와 SAM 을 설치합니다. Lambda 등 AWS 를 사용하는 작업에는 이 기능이 필요합니다.
+1. Docker 를 설치합니다.
 
-    * https://aws.amazon.com/ko/cli/
-    * https://aws.amazon.com/ko/serverless/sam/
-    * 설치 후 아래의 명령어를 이용해 인증을 설정합니다.
-    ```bash
-    aws configure
+    https://www.docker.com/
+
+1. GCloud 를 설치합니다.
+
+    https://cloud.google.com/sdk/docs/quickstarts?hl=ko
+    
+    1. gcloud 를 설치 후 아래의 명령어를 입력하여 초기화를 합니다.
+    
+        ```bash
+        gcloud init
+        ```
+
+    1. 이메일을 선택합니다..
+
+        Choose the account you would like to use to perform operations for this configuration
+    
+    1. 프로젝트를 선택합니다.
+    
+        Please enter numeric choice or text value (must exactly match list item)
+
+    1. 기본 Region 을 선택합니다.
+
+        Do you want to configure a default Compute Region and Zone? (Y/n)?
+
+    1. 아래의 명령어로 Google Continaer Registry 에 접근 할 수 있도록 합니다.
+
+        ```bash
+        gcloud auth configure-docker
+        ```
+
+### 🚀 Tutorial
+
+#### 1. 서비스 만들기
+
+1. 서비스 폴더를 원하는 곳에 생성합니다.
+    
+1. 아래처럼 파일들(Dockerfile, app.py)을 생성합니다.
+
+    ```
+    만든_서비스_폴더/
+        Dockerfile
+        src/
+            app.py
     ```
 
-### Tutorial
-
-#### 1. 람다 함수들을 저장 할 폴더 만들기
-
-    람다 함수들을 저장 할 폴더를 원하는 곳에 만들어주세요.
-
-#### 2. 핸들러 만들기
-
-아래의 코드에 주석을 보고 값을 넣고 실행해주세요.
-
-```python
-import easy_cloudrun
-
-# 람다 함수를 저장할 버킷명입니다.
-bucket_name = "YOUR BUCKET NAME"
-region_name = "YOUR AWS REGION"
-
-# ~/.aws/config. 에 인증파일이 있다면 None 값으로 두면 됩니다.
-# S3, Lambda, IAM (Role Related Policies) 권한이 필요합니다.
-aws_access_key_id = "YOUR AWS ACCESS KEY ID"
-aws_secret_access_key = "YOUR AWS SECRET ACCESS KEY"
-
-# 람다 함수들을 저장 할 디렉토리입니다.
-# 저장하고 싶은 곳에 디렉토리를 만들고 그 경로로 값을 바꿔주세요.
-services_dir = "WHERE TO STORE LAMBDA FUNCTIONS"
-
-# (람다 레이어가 아닙니다!) 람다 함수들에 공통적으로 배포 할 코드의 경로입니다.
-# 테스트, 배포 할 때마다 이 경로에 있는 폴더가 람다 함수 폴더에 복사됩니다.
-# 사용하지 않으려면 `빈 스트링` 으로 설정하세요.
-app_layers_dir = "APP LAYERS DIRECTORY"
-print(handler)
-
-# SLACK WEBHOOK API URL 입니다. 
-# Exception 이 발생하면 슬랙으로 오류 메시지를 보냅니다.
-# 사용하지 않으려면 `빈 스트링` 으로 설정하세요.
-slack_url = "YOUR SLACK API URL"
-
-# 람다 함수에 넣을 환경변수입니다. 
-environ = {"fruit": "apple"}
-
-handler = easy_cloudrun.AWSLambda(bucket_name, services_dir, app_layers_dir, environ=environ,
-                                slack_url=slack_url,
-                                aws_access_key_id=aws_access_key_id, aws_secret_access_key=aws_secret_access_key, region_name=region_name)
-```
-
-실행결과:
-```
-<easy_cloudrun.AWSLambda object at 0x00DCE7F0>
-```
-
-#### 2. 람다 함수 만들기
-
-1. 아래의 코드를 실행하여 람다 함수를 만들어주세요.
+1. `만든_서비스_폴더/src/app.py` 파일에 아래의 코드를 입력합니다.
 
     ```python
-    >>> handler.create("TestLambda")
+    import os
+    from flask import Flask, request
+
+    app = Flask(__name__)
+
+    @app.route("/", methods=['GET'])
+    def main():
+        return f"{os.environ['FRUIT']}"
+
+    app.run(host='0.0.0.0', port=os.environ["PORT"])
+    ```
+
+1. `만든_서비스_폴더/src/Dockerfile` 에 아래의 코드를 입력합니다.
+
+    ```Dockerfile
+    FROM ubuntu:18.04
+
+    RUN apt-get update -y
+    RUN apt-get install python3 -y
+    RUN apt-get install python3-pip -y
+
+    RUN pip3 install --upgrade pip
+    RUN pip3 install flask
+
+    COPY ./src /app
+    WORKDIR /app
+
+    CMD python3 app.py
+    ```
+
+#### 2. 서비스를 로컬에서 실행해보기
+
+
+1. 아래의 코드를 실행하여 핸들러를 초기화합니다.
+
+    ```python
+    import easy_cloudrun
+
+
+    handler = easy_cloudrun.EasyCloudRun()
+
+    print(handler)
+    ```
+
+1. 아래의 코드를 이용하여 서버를 로컬에서 실행해봅니다.
+
+    ```python
+    service_name = "sample"
+    dockerfile_dir = "local_dir/services/sample"
+    environ = {"FRUIT": "Cherry"}
+    port = 3040
+
+    handler.run(service_name, dockerfile_dir,environ=environ, port=3040)
     ```
 
     실행결과: 
-    ```python
-    Creating TestLambda service ...
-    Deploying App layer ...
-    App layer deployed.
-    TestLambda created.
-    ```
-
-1. `아까_만든_람다함수_폴더_경로/`TestLambda 로 들어가서 잘 만들어졌는지 확인합니다.
-
-#### 3. 람다 함수 작업하기
-
-1. `아까_만든_람다함수_폴더_경로/`TestLambda/app.py 를 편집기로 엽니다.
-
-1. `def work(args):` 에 아래의 코드 또는 원하는 코드를 입력합니다.
-
-    ```python
-    def work(args):
-        result = {}
-        print("hello", os.environ["fruit"])
-        return result
-    ```
-
-#### 4. 람다 함수 테스트하기
-
-* (참고) `아까_만든_람다함수_폴더_경로/`TestLambda/test.py 가 실행됩니다.
-
-```python
->>> handler.test("TestLambda")
-```
-
-실행결과:
-```python
-Deploying App layer ...
-App layer deployed.
-=== TestLambda Test Started ===
-
-
-hello apple
-
-Test Result:
-{'body': {}, 'statusCode': 200}
-
-
-=== TestLambda Test Completed ===
-Running Time:  0.2759997844696045
-```
-
-#### 5. 람다 레이어 배포하기
-
-1. 람다 레이어는 패키지들을 람다 함수에서 사용 할 수 있게 도와줍니다.
-
-1. 아래의 코드로 requests 패키지가 있는 common 이라는 이름의 람다 레이어를 배포합니다.
-
-    ```python
-    >>> handler.deploy_layer("common", ["requests"])
-    ```
-
-    실행결과:
     ```bash
-    Deploying lambda layer ...
-    Collecting requests
-    Using cached requests-2.24.0-py2.py3-none-any.whl (61 kB)
-    Collecting chardet<4,>=3.0.2
-    Using cached chardet-3.0.4-py2.py3-none-any.whl (133 kB)
-    Collecting certifi>=2017.4.17
-    Using cached certifi-2020.6.20-py2.py3-none-any.whl (156 kB)
-    Collecting idna<3,>=2.5
-    Using cached idna-2.10-py2.py3-none-any.whl (58 kB)
-    Collecting urllib3!=1.25.0,!=1.25.1,<1.26,>=1.21.1
-    Using cached urllib3-1.25.10-py2.py3-none-any.whl (127 kB)
-    Installing collected packages: chardet, certifi, idna, urllib3, requests
-    Successfully installed certifi-2020.6.20 chardet-3.0.4 idna-2.10 requests-2.24.0 urllib3-1.25.10
+    Building docker sample
+    [Command] cd local_dir/services/sample&&docker build --tag gcr.io/hello-266101/sample .
+    Sending build context to Docker daemon  3.584kB
+    Step 1/9 : FROM ubuntu:18.04
+    ---> 2eb2d388e1a2
+    Step 2/9 : RUN apt-get update -y
+    ---> Using cache
+    ---> 9afa5d8f29f4
+
+    ...    
+
+    [Command] docker run --rm --network easy_cloudrun --name sample -p 3040:3040 -e FRUIT=Cherry -e HELLO=WORLD -e PORT=3040  gcr.io/hello-266101/sample
+    * Serving Flask app "app" (lazy loading)
+    * Environment: production
+    * Running on http://0.0.0.0:3040/ (Press CTRL+C to quit)
+    WARNING: This is a development server. Do not use it in a production deployment.
+    Use a production WSGI server instead.
+    * Debug mode: off    
     ```
 
-#### 6. 람다 함수 배포하기
+1. 로컬에서 실행된 서버에 요청을 보내봅니다.
 
-```python
->>> handler.deploy("TestLambda", "common")
-```
+    ```python
+    >>> import requests
+    >>> requests.get("http://localhost:3040").text
+    'Cherry'
+    ```
 
-실행결과:
-```bash
-Deploying App layer ...
-App layer deployed.
-Starting Build inside a container
-Building function 'TestLambda'
+#### 2. 서비스를 CloudRun 에 배포하기
 
-...
+1. 아래의 코드로 CloudRun 에 배포해보겠습니다.
 
-CREATE_COMPLETE          AWS::Lambda::Function    TestLambda               -
-CREATE_COMPLETE          AWS::CloudFormation::S   E-TestLambda             -
-                         tack
--------------------------------------------------------------------------------------------------
+    ```python
+    service_name = "sample"
+    dockerfile_dir = "local_dir/services/sample"
+    environ = {"FRUIT": "Cherry", "HELLO": "WORLD"}
 
-Successfully created/updated stack - E-TestLambda in ap-northeast-2
+    commands = {
+        "--memory": "2Gi",
+        "--allow-unauthenticated": ""
+    }
 
-52.96790814399719
-```
+    handler.build_push_deploy(service_name, dockerfile_dir, environ=environ, commands=commands)
+    ```
 
-#### 7. 배포된 람다 함수 확인하기
+    실행결과:     
+    ```bash
+    Building docker sample
+    [Command] cd local_dir/services/sample&&docker build --tag gcr.io/hello-266101/sample .
+    Sending build context to Docker daemon  3.584kB
+    Step 1/9 : FROM ubuntu:18.04
+    ---> 2eb2d388e1a2
+    Step 2/9 : RUN apt-get update -y
+    ---> Using cache
+    ---> 9afa5d8f29f4
+    Step 3/9 : RUN apt-get install python3 -y    
 
-* 람다 콘솔에서 배포가 잘 되었는지 확인합니다. 링크는 아래에 있습니다.
+    ...
 
-* https://ap-northeast-2.console.aws.amazon.com/lambda/home?#/functions
+    Creating Revision.....................................................................................................................done
+    Routing traffic......done
+    Done.
+    Service [sample] revision [sample-00008-wox] has been deployed and is serving 100 percent of traffic at https://sample-y2i4cvxklq-an.a.run.app    
+    ```
 
+1. https://cloud.google.com/container-registry 에서 이미지가 배포가 되었는지 확인합니다.
+
+    ![gcr.png](./static/gcr.png)
+
+
+1. https://cloud.google.com/run 에서 클라우드런 서비스가 배포되었는지 확인합니다. 그리고 클릭합니다.
+
+    ![run.png](./static/run.png)
+
+1. 복사 버튼을 클릭하여 주소를 복사합니다.
+
+    ![run_service.png](./static/run_service.png)
+
+1. 아래의 코드를 실행하여 요청이 보내지는지 확인해봅니다.
+
+    ```python
+    >>> import requests
+    >>> requests.get("복사한_URL").text
+    'Cherry'
+    ```
+
+1. 완료했습니다.
+
+## ⛄ References
+
+#### 🌱 --allow-unauthenticated 를 사용하지 않은 서비스에 요청을 보내고 싶은 경우
+
+* 아래의 링크를 참조하세요.
+
+* https://github.com/da-huin/cloud_requests
+
+#### 🌱 도커 빌드가 너무 오래걸릴 경우
+
+1. 아래처럼 어떤 도커의 기본이 되는 도커파일을 생성합니다.
+
+    ```Dockerfile
+    FROM ubuntu:18.04
+
+    RUN apt-get update -y
+    RUN apt-get install python3 -y
+    RUN apt-get install python3-pip -y
+
+    RUN cp /usr/share/zoneinfo/Asia/Seoul /etc/localtime
+    RUN echo "Asia/Seoul" > /etc/timezone
+    RUN pip3 install --upgrade pip
+    RUN pip3 install Flask
+    ```
+
+1. 아래의 명령어로 배포합니다.
+
+    ```python
+    >>> handler.build_push(service_name, dockerfile_dir)
+    ```
+
+1. 만드려는 서비스 도커파일에 `FROM gcr.io/프로젝트_이름/위에서_배포한_도커파일_이름` 을 적고 배포합니다.
 
 ## 🎈 Usage <a name="usage"></a>
 
 Please check [Prerequisites](#prerequisites) before starting `Usage`.
 
-### 🌱 create <a name="create"></a>
+### 🌱 run <a name="run"></a>
 
-람다 함수를 생성 할 때 사용하세요.
+도커를 로컬에서 실행 할 때 사용합니다.
 
 **Parameters**
 
 * `(required) service_name`: str
+    
+* `(required) dockerfile_dir`: str
 
-    람다 함수의 이름입니다.
+    도커파일이 위치해있는 디렉토리 이름입니다.
 
-* `base_dir`: str (default = "")
+* `environ`: dict (default = {})
 
-    람다 함수의 기본 경로입니다. 아래와 같이 적용됩니다.
+    도커에 적용 할 환경변수 이름입니다.
 
-    ```
-    services_dir/base_dir/service_name
-    ```
+* `port`: int (default = 8080)
+    
+    도커에 적용할 포트 이름입니다.
+
+* `user_command`: str (default = "")
+
+    docker run 명령어 이후에 사용 할 유저의 커스텀 커맨드입니다.
+
+* `test`: bool (default = False)
+
+    이 매개변수는 환경변수 `TEST` 를 `true` 로 바꿔줍니다. 다른 기능은 없습니다.
 
 **Returns**
 
 * `None`
 
+### 🌱 build_push <a name="build_push"></a>
 
-### 🌱 test <a name="test"></a>
+도커를 빌드하고 Google Continaer Registry 에 배포 할 때 사용합니다.
+
+클라우드런에 배포하려면 GCR(Google Continaer Registry) 에 먼저 배포해야합니다.
+
+클라우드런에 배포하지 않아도, 다른 도커의 기본이 되는 도커파일로 사용하고 싶을 때 이 함수를 사용합니다.
+
+**Parameters**
 
 * `(required) service_name`: str
+    
+* `(required) dockerfile_dir`: str
 
-    테스트 할 람다 함수의 이름입니다.
-
-* `pytest`: bool (default=False)
-
-    pytest 로 테스트 할 것인지 여부입니다.
+    도커파일이 위치해있는 디렉토리 이름입니다.
 
 **Returns**
 
 * `None`
 
-### 🌱 deploy_layer <a name="deploy_layer"></a>
+### 🌱 build_push_deploy <a name="build_push"></a>
 
-* `(required) layer_name`: str
+도커를 빌드하고 Google Continaer Registry 에 배포 한 후 Cloud Run 에 배포 할 때 사용합니다.
 
-    배포 할 람다 레이어의 이름입니다.
+클라우드런에 배포하려면 GCR(Google Continaer Registry) 에 먼저 배포해야합니다.
 
-* `(required) requirements`: list
+**Parameters**
 
-    레이어에 사용 할 패키지 이름들입니다.
+* `(required) service_name`: str
+    
+* `(required) dockerfile_dir`: str
+
+    도커파일이 위치해있는 디렉토리 이름입니다.
+
+* `environ`: dict (default = {})
+
+    클라우드런에 배포할 도커의 환경변수입니다.
+
+* `commands`: dict (default = {})
+    
+    gcloud run deploy 에서 사용하는 매개변수에 사용자가 추가하고싶은 매개변수입니다.
+
+    예를들면 아래와 같이 사용 할 수 있습니다.
+
+    ```python
+    {
+        "--memory": "2Gi",
+        "--allow-unauthenticated": ""
+    }    
+    ```
+
+    자세한 내용은 아래의 링크를 참조하세요.
+
+    https://cloud.google.com/sdk/gcloud/reference/run/deploy
+
+
+**Returns**
+
+* `None`
+
+### 🌱 build <a name="build"></a>
+
+도커만 빌드 할 때 사용합니다.
+
+**Parameters**
+
+* `(required) service_name`: str
+    
+* `(required) dockerfile_dir`: str
+
+    도커파일이 위치해있는 디렉토리 이름입니다.
+
+**Returns**
+
+* `None`
+
+### 🌱 push <a name="push"></a>
+
+빌드된 도커를 푸쉬 할 때 사용합니다.
+
+**Parameters**
+
+* `(required) service_name`: str
 
 **Returns**
 
@@ -288,17 +414,100 @@ Please check [Prerequisites](#prerequisites) before starting `Usage`.
 
 ### 🌱 deploy <a name="deploy"></a>
 
+GCR에 배포된 도커를 Clodu Run 에 배포 할 때 사용합니다.
+
+**Parameters**
+
 * `(required) service_name`: str
+    
+* `environ`: dict (default = {})
 
-    배포 할 람다 함수의 이름입니다.
+    클라우드런에 배포할 도커의 환경변수입니다.
 
-* `(required) layer_name`: str
+* `commands`: dict (default = {})
+    
+    gcloud run deploy 에서 사용하는 매개변수에 사용자가 추가하고싶은 매개변수입니다.
 
-    람다 함수에 적용 할 람다 레이어의 이름입니다. deploy_layer 에서 정한 레이어의 이름을 사용하세요.
+    예를들면 아래와 같이 사용 할 수 있습니다.
+
+    ```python
+    {
+        "--memory": "2Gi",
+        "--allow-unauthenticated": ""
+    }    
+    ```
+
+    자세한 내용은 아래의 링크를 참조하세요.
+
+    https://cloud.google.com/sdk/gcloud/reference/run/deploy
+    
+**Returns**
+
+* `None`
+
+### 🌱 rmi <a name="rmi"></a>
+
+GCR 에 배포하면 계속 쌓이는데 이 이미지들을 서비스 이름만으로 한번에 제거 할 수 있게 도와주는 함수입니다.
+
+**Parameters**
+
+* `(required) service_name`: str
+    
+**Returns**
+
+* `None`
+
+**Examples**
+
+```python
+>>> service_name = "sample"
+>>> handler.rmi(service_name)
+```
+
+실행결과
+```bash
+[Command] gcloud container images delete gcr.io/hello-266101/sample@sha256:cb0e44aacba8a5f59b4664418c968daf18aaadd5b98f423c2584c0996e89fd7f --force-delete-tags -q
+Digests:
+- gcr.io/hello-266101/sample@sha256:cb0e44aacba8a5f59b4664418c968daf18aaadd5b98f423c2584c0996e89fd7f
+  Associated tags:
+ - latest
+Deleted [gcr.io/hello-266101/sample:latest].
+Deleted [gcr.io/hello-266101/sample@sha256:cb0e44aacba8a5f59b4664418c968daf18aaadd5b98f423c2584c0996e89fd7f].
+Deleted image sample in the cloud.
+```
+
+### 🌱 run_cloud <a name="run_cloud"></a>
+
+클라우드에 올라가 있는 도커를 로컬에서 실행하고 싶을 때 사용하는 함수입니다.
+
+**Parameters**
+
+* `(required) service_name`: str
+    
+* `(required) dockerfile_dir`: str
+
+    도커파일이 위치해있는 디렉토리 이름입니다.
+
+* `environ`: dict (default = {})
+
+    도커에 적용 할 환경변수 이름입니다.
+
+* `port`: int (default = 8080)
+    
+    도커에 적용할 포트 이름입니다.
+
+* `user_command`: str (default = "")
+
+    docker run 명령어 이후에 사용 할 유저의 커스텀 커맨드입니다.
+
+* `test`: bool (default = False)
+
+    이 매개변수는 환경변수 `TEST` 를 `true` 로 바꿔줍니다. 다른 기능은 없습니다.
 
 **Returns**
 
 * `None`
+
 
 ## 🎉 Acknowledgements <a name = "acknowledgement"></a>
 

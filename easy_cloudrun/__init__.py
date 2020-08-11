@@ -8,56 +8,69 @@ from . import utils
 
 class EasyCloudRun():
 
-    def __init__(self, services_path, layers_path="", service_layers_path="layers", network_name="easy_cloudrun"):
+    def __init__(self, layers_path="", service_layers_path="layers", network_name="easy_cloudrun"):
         self._utils_handler = utils.Utils()
-        self._services_path = services_path
         self._project_name = self._get_project_name()
         self._layers_path = layers_path
         self._service_layers_path = service_layers_path
         self._network_name = network_name
 
-    def rmi(self, service_name):
+    def run(self, service_name, dockerfile_dir, environ={}, port=8080, user_command="", test=False):
 
-        print(f"Deleting image {service_name} in the cloud.")
+        self._validate_service(dockerfile_dir)
 
-        command = f"gcloud container images list-tags gcr.io/{self._project_name}/{service_name} --format=yaml"
-        images = subprocess.check_output(command, shell=True)
-        containers = yaml.full_load_all(images)
+        self._deploy_layers(dockerfile_dir)
 
-        [self._utils_handler.check_output(
-            f"gcloud container images delete gcr.io/{self._project_name}/{service_name}@{container['digest']} --force-delete-tags -q") for container in containers]
+        self.build(service_name, dockerfile_dir)
 
-        print(f"Deleted image {service_name} in the cloud.")
+        self._run_docker(service_name, environ, port, user_command, test)
 
-    def build(self, service_name):
+    def run_cloud(self, service_name, environ={}, port=8080, user_command="", test=False):
+
+        self._utils_handler.check_output(
+            f"docker rmi {self._get_image_path(service_name)}")
+
+        self._run_docker(service_name, environ, port, user_command, test)
+
+    def build(self, service_name, dockerfile_dir):
+        self._validate_service(dockerfile_dir)
 
         print(f"Building docker {service_name}")
 
-        self._deploy_layers(service_name)
+        self._deploy_layers(dockerfile_dir)
 
         image_path = self._get_image_path(service_name)
-        service_path = self._get_service_path(service_name)
-        command = [f"cd {service_path}", f"docker build --tag {image_path} ."]
+
+        # service_path = self._get_service_path(service_name)
+        command = [f"cd {dockerfile_dir}",
+                   f"docker build --tag {image_path} ."]
 
         self._utils_handler.check_output(command)
 
         print(f"The {service_name} docker build is complete.")
 
-    def build_push(self, service_name):
-        self.build(service_name)
+    def build_push(self, service_name, dockerfile_dir):
+        self.build(service_name, dockerfile_dir)
         self.push(service_name)
 
-    def build_push_deploy(self, service_name, commands, environ):
-        self.build(service_name)
+    def build_push_deploy(self, service_name, dockerfile_dir, environ={}, commands={}):
+        self.build(service_name, dockerfile_dir)
         self.push(service_name)
-        self.deploy(service_name, commands, environ)
+        self.deploy(service_name, environ, commands)
 
-    def deploy(self, service_name, commands={}, environ={}):
+    def deploy(self, service_name, environ={}, commands={}):
 
         image_path = self._get_image_path(service_name)
 
-        commands.update("--set-env-vars", environ)
-        add_args = self._get_cloudrun_deploy_command(commands)
+        default_commands = {
+            "--platform": "managed",
+            "--region": self._get_region(),
+            "--no-allow-unauthenticated": "",
+            "--concurrency": "1000",
+        }
+        
+        commands.update({"--set-env-vars": environ})
+        add_args = self._get_cloudrun_deploy_command({**default_commands, **commands})
 
         run_args = " ".join(add_args)
 
@@ -74,22 +87,22 @@ class EasyCloudRun():
 
         print(f"The {service_name} docker push completed.")
 
-    def run(self, service_name, environ={}, port=8080, user_command="", test=False):
+    def rmi(self, service_name):
 
-        self._validate_service(service_name)
+        print(f"Deleting image {service_name} in the cloud.")
 
-        self._deploy_layers(service_name)
+        command = f"gcloud container images list-tags gcr.io/{self._project_name}/{service_name} --format=yaml"
+        images = subprocess.check_output(command, shell=True)
+        containers = yaml.full_load_all(images)
 
-        self.build(service_name)
+        [self._utils_handler.check_output(
+            f"gcloud container images delete gcr.io/{self._project_name}/{service_name}@{container['digest']} --force-delete-tags -q") for container in containers]
 
-        self._run_docker(service_name, environ, port, user_command, test)
+        print(f"Deleted image {service_name} in the cloud.")
 
-    def run_cloud(self, service_name, environ={}, port=8080, user_command="", test=False):
 
-        self._utils_handler.check_output(
-            f"docker rmi {self._get_image_path(service_name)}")
-
-        self._run_docker(service_name, environ, port, user_command, test)
+    def _get_region(self):
+        return subprocess.check_output("gcloud config get-value compute/region", shell=True).decode().split("\n")[0].strip()
 
     def _get_project_name(self):
         return subprocess.check_output("gcloud config get-value project", shell=True).decode().split("\n")[0].strip()
@@ -106,7 +119,7 @@ class EasyCloudRun():
         changes["PORT"] = str(port)
 
         if test:
-            changes.update("TEST", "true")
+            changes.update({"TEST": "true"})
 
         command = []
 
@@ -119,7 +132,7 @@ class EasyCloudRun():
         command.extend([user_command])
         command.extend([self._get_image_path(service_name)])
 
-        self._utils_handler.check_output(command)
+        self._utils_handler.check_output(" ".join(command))
 
     def _create_network(self, network_name):
         try:
@@ -130,9 +143,6 @@ class EasyCloudRun():
 
     def _get_image_path(self, service_name):
         return f'gcr.io/{self._project_name}/{service_name}'
-
-    def _get_service_path(self, service_name):
-        return self._utils_handler.get_unique_service_path(self._services_path, service_name)
 
     def _get_cloudrun_deploy_command(self, commands):
         result = []
@@ -153,16 +163,14 @@ class EasyCloudRun():
         command = f"docker stop {service_name} && docker rm {service_name}"
         self._utils_handler.check_output(command)
 
-    def _deploy_layers(self, service_name):
+    def _deploy_layers(self, dockerfile_dir):
         if self._layers_path:
-            self._validate_service(service_name)
+            self._validate_service(dockerfile_dir)
             from_layer_path = self._layers_path
-            to_layer_path = f"{self._get_service_path(service_name)}/{self._service_layers_path}"
+            to_layer_path = f"{dockerfile_dir}/{self._service_layers_path}"
 
             self._utils_handler.copy_directory(from_layer_path, to_layer_path)
 
-    def _validate_service(self, service_name):
-        try:
-            self._get_service_path(service_name)
-        except:
-            raise ValueError(f"{service_name} is not exists.")
+    def _validate_service(self, dockerfile_dir):
+        if not os.path.isdir(dockerfile_dir):
+            raise ValueError(f"{dockerfile_dir} is not exists.")

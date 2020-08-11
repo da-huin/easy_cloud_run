@@ -51,7 +51,7 @@ class Utils():
             command = "&&".join(command)
 
         result = ""
-        # print("[Command] " + command)
+        print("[Command] " + command)
 
         process = subprocess.Popen(
             command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
